@@ -1,0 +1,1856 @@
+---
+title: "Hard-to-reach analysis and results"
+author: "Juho Luoma"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    fig_crop: false
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(crop = TRUE)
+```
+
+```{r, echo=FALSE,include=FALSE}
+
+
+## Functions
+
+source(
+  paste0(here::here(),"/Public Code/htr_functions.R")
+)
+
+
+
+```
+
+```{r, echo=F,include=F}
+
+# Needed libraries
+library(tidyverse)
+library(psych)
+library(lme4)
+
+library(irrCAC)
+library(irr)
+library(RStata)
+
+
+## Get the data
+path = here::here("Public data")
+
+data = read.csv(paste0(path,"/LAKANA Hard-to-reach dataset.csv"))
+
+
+
+## Making data dictionary
+# data_dict = cbind.data.frame( names(data),
+#                   c("---",
+#                     "Unique Village Identifier",
+#                     "Numerical pseudonym for the District",
+#                     "Numerical pseudonym for the cscom",
+#                     "Numerical pseudonym for the Village name",
+#                     "Overall estimate of hardness to reach",
+#                     "Estimate of village residents’ access to health care",
+#                     "How difficult is it to transport equipment to the village in the rainy season?",
+#                     "How difficult is it to transport equipment to the village in the non-rainy season?",
+#                     "Estimate of travel time to the village on rainy season",
+#                     "Estimate of travel time to the village on non-rainy season",
+#                     "Difficulty of the terrain or road on rainy season",
+#                     "Difficulty of the terrain or road on non-rainy season",
+#                     "Can the village be rached by large, motorized vehicle",
+#                     "Are there any public transportation possibilities for the residents?",
+#                     "Numerical pseudonym for the username",
+#                     "App start time from app metadata",
+#                     "Numerical pseudonym for the rater",
+#                     "Number of villages evaluated in a survey round",
+#                     "Time taken to fill the survey round",
+#                     "Workload estimate",
+#                     "Distance from the nearest health facility",
+#                     "Outreach program status",
+#                     "Travel time by car (minutes) from OpenStreetMap API",
+#                     "Mean monthly rainfall (mean mm/month) from Open-Meteo API",
+#                     "Sum of Person-time in a village",
+#                     "Number of deaths in a village",
+#                     "All-item composite score",
+#                     "Two-item composite score",
+#                     "Condition of the roads on rainy season",
+#                     "Condition of the roads in the non-rainy season",
+#                     "Difficulty of the terrain on rainy season",
+#                     "Difficulty of the terrain on non-rainy season",
+#                     "Numerical pseudonym for the electronic form"),
+#                   c("---",
+#                     "Alphanumeric string",
+#                     "Integer",
+#                     "Integer",
+#                     "Integer",
+#                     "Integer; [1-5]",
+#                     "Integer; [1-5]",
+#                     "Integer; [1-5]",
+#                     "Integer; [1-5]",
+#                     "Integer; [1=under one hour, 2=1-2 hours, 3=3-4 hours, 4=4-5 hours, 5=over 5 hours]",
+#                     "Integer; [1=under one hour, 2=1-2 hours, 3=3-4 hours, 4=4-5 hours, 5=over 5 hours]",
+#                     "Integer; [1-5]",
+#                     "Integer; [1-5]",
+#                     "Integer; [0=No, 1=Yes, Unknown=99]",
+#                     "Integer; [0=No, 1=Yes, Unknown=99]",
+#                     "Integer",
+#                     "Datetime",
+#                     "Integer",
+#                     "Integer",
+#                     "Minutes",
+#                     "Integer; [1-3]",
+#                     "Double",
+#                     "Integer; [0=Standard,1=Advanced]",
+#                     "Double",
+#                     "Double",
+#                     "Float",
+#                     "Integer",
+#                     "Integer; Sum of survey itmes",
+#                     "Integer; Sum of two items",
+#                     "Integer; [1-5]",
+#                     "Integer; [1-5]",
+#                     "Integer; [1-5]",
+#                     "Integer; [1-5]",
+#                     "Integer"))
+# names(data_dict) = c("Variable names","Description","Format")
+# 
+# openxlsx::write.xlsx(data_dict,"LAKANA Hard-to-reach data dictionary.xlsx")
+
+
+## Mortality result
+composite_mort_mod = glmer(eligibleDeath~ scale(composite_full)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_composite_mort_mod = glmer(eligibleDeath~ scale(composite_full) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+estimate_comp = summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_comp_low = as.numeric(estimate_comp) + 
+  c(
+    as.numeric(-1.96*summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_comp_high = as.numeric(estimate_comp) + as.numeric(1.96*summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+p = summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_comp = summary(unadj_composite_mort_mod)$coef[-1,1] %>% 
+   as.numeric()   ## to output
+
+unadj_CI_comp_low = as.numeric(unadj_estimate_comp) + 
+  c(
+    as.numeric(-1.96*summary(unadj_composite_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_comp_high = as.numeric(unadj_estimate_comp) + as.numeric(1.96*summary(unadj_composite_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df = data.frame(
+  "Model" = c(" ", "Model 1"),
+  "Model.Covariates" = c("Composite variable (full)",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_comp %>% exp() %>% round(2)," (",
+    unadj_CI_comp_low %>% exp() %>% round(3),"-",
+    unadj_CI_comp_high %>% exp() %>% round(3),")"
+  )," " ),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_comp %>% exp() %>% round(2)," (",
+    CI_comp_low %>% exp() %>% round(3),"-",
+    CI_comp_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+### Trimmed composite score
+## Mortality result
+composite_mort_mod = glmer(eligibleDeath~ scale(composite_trim)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_composite_mort_mod = glmer(eligibleDeath~ scale(composite_trim) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+estimate_comp = summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_comp_low = as.numeric(estimate_comp) + 
+  c(
+    as.numeric(-1.96*summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_comp_high = as.numeric(estimate_comp) + as.numeric(1.96*summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+p = summary(composite_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_comp = summary(unadj_composite_mort_mod)$coef[-1,1] %>% 
+   as.numeric()   ## to output
+
+unadj_CI_comp_low = as.numeric(unadj_estimate_comp) + 
+  c(
+    as.numeric(-1.96*summary(unadj_composite_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_comp_high = as.numeric(unadj_estimate_comp) + as.numeric(1.96*summary(unadj_composite_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df2 = data.frame(
+  "Model" = c(" ", "Model 2"),
+  "Model.Covariates" = c("Composite variable (trimmed)",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_comp %>% exp() %>% round(2)," (",
+    unadj_CI_comp_low %>% exp() %>% round(3),"-",
+    unadj_CI_comp_high %>% exp() %>% round(3),")"
+  )," " ),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_comp %>% exp() %>% round(2)," (",
+    CI_comp_low %>% exp() %>% round(3),"-",
+    CI_comp_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df2,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+### Overall estimate
+overall_mort_mod = glmer(eligibleDeath~ scale(hard_overall)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+unadj_overall_mort_mod = glmer(eligibleDeath~ scale(hard_overall) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_overall = summary(overall_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_overall_low = as.numeric(estimate_overall) + 
+  c(
+    as.numeric(-1.96*summary(overall_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_overall_high = as.numeric(estimate_overall) + as.numeric(1.96*summary(overall_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+p = summary(overall_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+
+
+unadj_estimate_overall = summary(unadj_overall_mort_mod)$coef[-1,1] %>% 
+   as.numeric()   ## to output
+
+unadj_CI_overall_low = as.numeric(unadj_estimate_comp) + 
+  c(
+    as.numeric(-1.96*summary(unadj_overall_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_overall_high = as.numeric(unadj_estimate_comp) + as.numeric(1.96*summary(unadj_overall_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df3 = data.frame(
+  "Model" = c(" ", "Model 3"),
+  "Model.Covariates" = c("Overall assessment",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_overall %>% exp() %>% round(2)," (",
+    unadj_CI_overall_low %>% exp() %>% round(3),"-",
+    unadj_CI_overall_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_overall %>% exp() %>% round(2)," (",
+    CI_overall_low %>% exp() %>% round(3),"-",
+    CI_overall_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df3,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+##############################
+##############################
+##############################
+
+
+resMed_mort_mod = glmer(eligibleDeath~ scale(hard_residentsMedical)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_resMed_mort_mod = glmer(eligibleDeath~ scale(hard_residentsMedical) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+estimate_resMed = summary(resMed_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_resMed_low = as.numeric(estimate_resMed) + 
+  c(
+    as.numeric(-1.96*summary(resMed_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_resMed_high = as.numeric(estimate_resMed) + as.numeric(1.96*summary(resMed_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+p = summary(resMed_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+
+
+unadj_estimate_resMed = summary(unadj_resMed_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_resMed_low = as.numeric(unadj_estimate_resMed) + 
+  c(
+    as.numeric(-1.96*summary(unadj_resMed_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_resMed_high = as.numeric(unadj_estimate_resMed) + as.numeric(1.96*summary(unadj_resMed_mort_mod)$coef[-1,2] )
+
+
+
+
+mortality_res_df4 = data.frame(
+  "Model" = c(" ", "Model 4"),
+  "Model.Covariates" = c("Residents' access to health care",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_resMed %>% exp() %>% round(2)," (",
+    unadj_CI_resMed_low %>% exp() %>% round(3),"-",
+    unadj_CI_resMed_high %>% exp() %>% round(3),")"
+  ), " "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_resMed %>% exp() %>% round(2)," (",
+    CI_resMed_low %>% exp() %>% round(3),"-",
+    CI_resMed_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df4,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+rainyTransp_mort_mod = glmer(eligibleDeath~ scale(hard_transportationEquipmentRainy)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_rainyTransp_mort_mod = glmer(eligibleDeath~ scale(hard_transportationEquipmentRainy) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+estimate_rainyTransp = summary(rainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_rainyTransp_low = as.numeric(estimate_rainyTransp) + 
+  c(
+    as.numeric(-1.96*summary(rainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_rainyTransp_high = as.numeric(estimate_rainyTransp) + as.numeric(1.96*summary(rainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+p = summary(rainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+
+unadj_estimate_rainyTransp = summary(unadj_rainyTransp_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_rainyTransp_low = as.numeric(unadj_estimate_rainyTransp) + 
+  c(
+    as.numeric(-1.96*summary(unadj_rainyTransp_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_rainyTransp_high = as.numeric(unadj_estimate_rainyTransp) + as.numeric(1.96*summary(unadj_rainyTransp_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df5 = data.frame(
+  "Model" = c(" ", "Model 5"),
+  "Model.Covariates" = c("Difficulty of equipment transportation on rainy season",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_rainyTransp %>% exp() %>% round(2)," (",
+    unadj_CI_rainyTransp_low %>% exp() %>% round(3),"-",
+    unadj_CI_rainyTransp_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_rainyTransp %>% exp() %>% round(2)," (",
+    CI_rainyTransp_low %>% exp() %>% round(3),"-",
+    CI_rainyTransp_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df5,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+######################
+######################
+######################
+######################
+
+
+
+
+nonrainyTransp_mort_mod = glmer(eligibleDeath~ scale(hard_transportationEquipmentNonRainy)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_nonrainyTransp_mort_mod = glmer(eligibleDeath~ scale(hard_transportationEquipmentNonRainy) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_nonrainyTransp = summary(nonrainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_nonrainyTransp_low = as.numeric(estimate_nonrainyTransp) + 
+  c(
+    as.numeric(-1.96*summary(nonrainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_nonrainyTransp_high = as.numeric(estimate_nonrainyTransp) + as.numeric(1.96*summary(nonrainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(nonrainyTransp_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_nonrainyTransp = summary(unadj_nonrainyTransp_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_nonrainyTransp_low = as.numeric(unadj_estimate_nonrainyTransp) + 
+  c(
+    as.numeric(-1.96*summary(unadj_nonrainyTransp_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_nonrainyTransp_high = as.numeric(unadj_estimate_nonrainyTransp) + as.numeric(1.96*summary(unadj_nonrainyTransp_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df6 = data.frame(
+  "Model" = c(" ", "Model 6"),
+  "Model.Covariates" = c("Difficulty of equipment transportation on non-rainy season",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_nonrainyTransp %>% exp() %>% round(2)," (",
+    unadj_CI_nonrainyTransp_low %>% exp() %>% round(3),"-",
+    unadj_CI_nonrainyTransp_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_nonrainyTransp %>% exp() %>% round(2)," (",
+    CI_nonrainyTransp_low %>% exp() %>% round(3),"-",
+    CI_nonrainyTransp_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df6,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+
+
+
+
+
+##################################################################
+##################################################################
+###################### Travel time ###############################
+##################################################################
+##################################################################
+
+
+rainyTime_mort_mod = glmer(eligibleDeath~ scale(hard_timeTabletPlaceRainy)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_rainyTime_mort_mod = glmer(eligibleDeath~ scale(hard_timeTabletPlaceRainy) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_rainyTime = summary(rainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_rainyTime_low = as.numeric(estimate_rainyTime) + 
+  c(
+    as.numeric(-1.96*summary(rainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_rainyTime_high = as.numeric(estimate_rainyTime) + as.numeric(1.96*summary(rainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(rainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_rainyTime = summary(unadj_rainyTime_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_rainyTime_low = as.numeric(unadj_estimate_rainyTime) + 
+  c(
+    as.numeric(-1.96*summary(unadj_rainyTime_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_rainyTime_high = as.numeric(unadj_estimate_rainyTime) + as.numeric(1.96*summary(unadj_rainyTime_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df7 = data.frame(
+  "Model" = c(" ", "Model 7"),
+  "Model.Covariates" = c("Estimate of travel time during rainy season",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_rainyTime %>% exp() %>% round(2)," (",
+    unadj_CI_rainyTime_low %>% exp() %>% round(3),"-",
+    unadj_CI_rainyTime_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_rainyTime %>% exp() %>% round(2)," (",
+    CI_rainyTime_low %>% exp() %>% round(3),"-",
+    CI_rainyTime_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df7,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+#######################
+###### Non-rainy time##
+#######################
+
+
+nonrainyTime_mort_mod = glmer(eligibleDeath~ scale(hard_timeTabletPlaceNonRainy)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_nonrainyTime_mort_mod = glmer(eligibleDeath~ scale(hard_timeTabletPlaceNonRainy) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_nonrainyTime = summary(nonrainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_nonrainyTime_low = as.numeric(estimate_nonrainyTime) + 
+  c(
+    as.numeric(-1.96*summary(nonrainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_nonrainyTime_high = as.numeric(estimate_nonrainyTime) + as.numeric(1.96*summary(nonrainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(nonrainyTime_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_nonrainyTime = summary(unadj_nonrainyTime_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_nonrainyTime_low = as.numeric(unadj_estimate_nonrainyTime) + 
+  c(
+    as.numeric(-1.96*summary(unadj_nonrainyTime_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_nonrainyTime_high = as.numeric(unadj_estimate_nonrainyTime) + as.numeric(1.96*summary(unadj_nonrainyTime_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df8 = data.frame(
+  "Model" = c(" ", "Model 8"),
+  "Model.Covariates" = c("Estimate of travel time during non-rainy season",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_nonrainyTime %>% exp() %>% round(2)," (",
+    unadj_CI_nonrainyTime_low %>% exp() %>% round(3),"-",
+    unadj_CI_nonrainyTime_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_nonrainyTime %>% exp() %>% round(2)," (",
+    CI_nonrainyTime_low %>% exp() %>% round(3),"-",
+    CI_nonrainyTime_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df8,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+
+
+
+
+
+
+##################################################################
+##################################################################
+###################### Topographical difficulty ##################
+##################################################################
+##################################################################
+
+data$hard_roadconditionRainyCar = as.numeric(data$hard_roadconditionRainyCar)
+rainyRoad_mort_mod = glmer(eligibleDeath~ scale(hard_roadconditionRainyCar)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_rainyRoad_mort_mod = glmer(eligibleDeath~ scale(hard_roadconditionRainyCar) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_rainyRoad = summary(rainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_rainyRoad_low = as.numeric(estimate_rainyRoad) + 
+  c(
+    as.numeric(-1.96*summary(rainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_rainyRoad_high = as.numeric(estimate_rainyRoad) + as.numeric(1.96*summary(rainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(rainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_rainyRoad = summary(unadj_rainyRoad_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_rainyRoad_low = as.numeric(unadj_estimate_rainyRoad) + 
+  c(
+    as.numeric(-1.96*summary(unadj_rainyRoad_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_rainyRoad_high = as.numeric(unadj_estimate_rainyRoad) + as.numeric(1.96*summary(unadj_rainyRoad_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df9 = data.frame(
+  "Model" = c(" ", "Model 9"),
+  "Model.Covariates" = c("Estimate of road conditions on rainy season",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_rainyRoad %>% exp() %>% round(2)," (",
+    unadj_CI_rainyRoad_low %>% exp() %>% round(3),"-",
+    unadj_CI_rainyRoad_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_rainyRoad %>% exp() %>% round(2)," (",
+    CI_rainyRoad_low %>% exp() %>% round(3),"-",
+    CI_rainyRoad_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df9,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+
+
+
+
+
+#####################
+### non-rainy road ##
+#####################
+
+
+data$hard_roadconditionNonRainyCar = as.numeric(data$hard_roadconditionNonRainyCar)
+nonrainyRoad_mort_mod = glmer(eligibleDeath~ scale(hard_roadconditionNonRainyCar)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_nonrainyRoad_mort_mod = glmer(eligibleDeath~ scale(hard_roadconditionNonRainyCar) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_nonrainyRoad = summary(nonrainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_nonrainyRoad_low = as.numeric(estimate_nonrainyRoad) + 
+  c(
+    as.numeric(-1.96*summary(nonrainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_nonrainyRoad_high = as.numeric(estimate_nonrainyRoad) + as.numeric(1.96*summary(nonrainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(nonrainyRoad_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_nonrainyRoad = summary(unadj_nonrainyRoad_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_nonrainyRoad_low = as.numeric(unadj_estimate_nonrainyRoad) + 
+  c(
+    as.numeric(-1.96*summary(unadj_nonrainyRoad_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_nonrainyRoad_high = as.numeric(unadj_estimate_nonrainyRoad) + as.numeric(1.96*summary(unadj_nonrainyRoad_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df10 = data.frame(
+  "Model" = c(" ", "Model 10"),
+  "Model.Covariates" = c("Estimate of road conditions on non-rainy season",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_nonrainyRoad %>% exp() %>% round(2)," (",
+    unadj_CI_nonrainyRoad_low %>% exp() %>% round(3),"-",
+    unadj_CI_nonrainyRoad_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_nonrainyRoad %>% exp() %>% round(2)," (",
+    CI_nonrainyRoad_low %>% exp() %>% round(3),"-",
+    CI_nonrainyRoad_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df10,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+
+
+
+
+
+#######################################
+########## Method of transportation ###
+#######################################
+
+
+reachCar_mort_mod = glmer(eligibleDeath~ as.factor(hard_ReachCar)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_reachCar_mort_mod = glmer(eligibleDeath~ as.factor(hard_ReachCar) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_reachCar = summary(reachCar_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_reachCar_low = as.numeric(estimate_reachCar) + 
+  c(
+    as.numeric(-1.96*summary(reachCar_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_reachCar_high = as.numeric(estimate_reachCar) + as.numeric(1.96*summary(reachCar_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(reachCar_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_reachCar = summary(unadj_reachCar_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_reachCar_low = as.numeric(unadj_estimate_reachCar) + 
+  c(
+    as.numeric(-1.96*summary(unadj_reachCar_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_reachCar_high = as.numeric(unadj_estimate_reachCar) + as.numeric(1.96*summary(unadj_reachCar_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df11 = data.frame(
+  "Model" = c(" ", "Model 11"),
+  "Model.Covariates" = c("Village can't be reached by car",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_reachCar %>% exp() %>% round(2)," (",
+    unadj_CI_reachCar_low %>% exp() %>% round(3),"-",
+    unadj_CI_reachCar_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_reachCar %>% exp() %>% round(2)," (",
+    CI_reachCar_low %>% exp() %>% round(3),"-",
+    CI_reachCar_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df11,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+
+
+
+
+
+#####################
+### public transportation ##
+#####################
+
+pubTransport_mort_mod = glmer(eligibleDeath~ as.factor(hard_publicTransportation)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_pubTransport_mort_mod = glmer(eligibleDeath~ as.factor(hard_publicTransportation) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_pubTransport = summary(pubTransport_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_pubTransport_low = as.numeric(estimate_pubTransport) + 
+  c(
+    as.numeric(-1.96*summary(pubTransport_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_pubTransport_high = as.numeric(estimate_pubTransport) + as.numeric(1.96*summary(pubTransport_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(pubTransport_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_pubTransport = summary(unadj_pubTransport_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_pubTransport_low = as.numeric(unadj_estimate_pubTransport) + 
+  c(
+    as.numeric(-1.96*summary(unadj_pubTransport_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_pubTransport_high = as.numeric(unadj_estimate_pubTransport) + as.numeric(1.96*summary(unadj_pubTransport_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df12 = data.frame(
+  "Model" = c(" ", "Model 12"),
+  "Model.Covariates" = c("Village doesn't have public transportation",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_pubTransport %>% exp() %>% round(2)," (",
+    unadj_CI_pubTransport_low %>% exp() %>% round(3),"-",
+    unadj_CI_pubTransport_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_pubTransport %>% exp() %>% round(2)," (",
+    CI_pubTransport_low %>% exp() %>% round(3),"-",
+    CI_pubTransport_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df12,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+
+
+
+
+#########################
+## Terrain difficulty,rainy ###
+#########################
+
+
+data$hard_terrainDifficultyRainy_num = as.numeric(data$hard_terrainDifficultyRainy)
+rainyTerrain_mort_mod = glmer(eligibleDeath~ scale(hard_terrainDifficultyRainy_num)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_rainyTerrain_mort_mod = glmer(eligibleDeath~ scale(hard_terrainDifficultyRainy_num) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_rainyTerrain = summary(rainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_rainyTerrain_low = as.numeric(estimate_rainyTerrain) + 
+  c(
+    as.numeric(-1.96*summary(rainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_rainyTerrain_high = as.numeric(estimate_rainyTerrain) + as.numeric(1.96*summary(rainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(rainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_rainyTerrain = summary(unadj_rainyTerrain_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_rainyTerrain_low = as.numeric(unadj_estimate_rainyTerrain) + 
+  c(
+    as.numeric(-1.96*summary(unadj_rainyTerrain_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_rainyTerrain_high = as.numeric(unadj_estimate_rainyTerrain) + as.numeric(1.96*summary(unadj_rainyTerrain_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df13 = data.frame(
+  "Model" = c(" ", "Model 13"),
+  "Model.Covariates" = c("Not-car-suitable-terrain, rainy",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_rainyTerrain %>% exp() %>% round(2)," (",
+    unadj_CI_rainyTerrain_low %>% exp() %>% round(3),"-",
+    unadj_CI_rainyTerrain_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_rainyTerrain %>% exp() %>% round(2)," (",
+    CI_rainyTerrain_low %>% exp() %>% round(3),"-",
+    CI_rainyTerrain_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df13,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+#########################
+## Terrain difficulty, non-rainy ###
+#########################
+
+
+data$hard_terrainDifficultyNonRainy_num = as.numeric(data$hard_terrainDifficultyNonRainy)
+nonrainyTerrain_mort_mod = glmer(eligibleDeath~ scale(hard_terrainDifficultyNonRainy_num)+scale(distanceKM) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+unadj_nonrainyTerrain_mort_mod = glmer(eligibleDeath~ scale(hard_terrainDifficultyNonRainy_num) + offset(log(totalPYR)) + (1|rater),data = data,family="poisson")
+
+
+estimate_nonrainyTerrain = summary(nonrainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Estimate") %>% unlist() %>% as.numeric()   ## to output
+
+CI_nonrainyTerrain_low = as.numeric(estimate_nonrainyTerrain) + 
+  c(
+    as.numeric(-1.96*summary(nonrainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+  ) 
+
+CI_nonrainyTerrain_high = as.numeric(estimate_nonrainyTerrain) + as.numeric(1.96*summary(nonrainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Std. Error") %>% unlist())
+
+
+p = summary(nonrainyTerrain_mort_mod)$coef[-1,] %>% 
+  as.data.frame() %>% 
+  select("Pr(>|z|)") %>% unlist()
+
+unadj_estimate_nonrainyTerrain = summary(unadj_nonrainyTerrain_mort_mod)$coef[-1,1] %>% as.numeric()   ## to output
+
+unadj_CI_nonrainyTerrain_low = as.numeric(unadj_estimate_nonrainyTerrain) + 
+  c(
+    as.numeric(-1.96*summary(unadj_nonrainyTerrain_mort_mod)$coef[-1,2] )
+  ) 
+
+unadj_CI_nonrainyTerrain_high = as.numeric(unadj_estimate_nonrainyTerrain) + as.numeric(1.96*summary(unadj_nonrainyTerrain_mort_mod)$coef[-1,2] )
+
+
+
+mortality_res_df15 = data.frame(
+  "Model" = c(" ", "Model 15"),
+  "Model.Covariates" = c("Not-car-suitable-terrain, non-rainy",
+                         "Distance to the nearest health facility"),
+  "Unadjusted Risk ratio (95% CI)" = c(paste0(
+    unadj_estimate_nonrainyTerrain %>% exp() %>% round(2)," (",
+    unadj_CI_nonrainyTerrain_low %>% exp() %>% round(3),"-",
+    unadj_CI_nonrainyTerrain_high %>% exp() %>% round(3),")"
+  )," "),
+  "Adjusted Risk ratio (95% CI)" = paste0(
+    estimate_nonrainyTerrain %>% exp() %>% round(2)," (",
+    CI_nonrainyTerrain_low %>% exp() %>% round(3),"-",
+    CI_nonrainyTerrain_high %>% exp() %>% round(3),")"
+  ),
+  "P.value" = p %>% round(4)
+)
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,mortality_res_df15,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+rownames(mortality_res_df) = NULL
+
+
+
+
+
+mortality_res_df = rbind.data.frame(mortality_res_df,
+                                    data.frame(
+  "Model" = c(" "),
+  "Model.Covariates" = c(" "),
+  "Unadjusted Risk ratio (95% CI)" = c(" "),
+  "Adjusted Risk ratio (95% CI)" = c(" "),
+  "P-value" = c(" ")
+))
+
+
+
+
+
+
+names(mortality_res_df) = c("Model","Model Covariates","Unadjusted Risk ratio (95% CI)","Adjusted Risk ratio (95% CI)","P-value")
+
+
+
+
+
+
+
+descrTable <-data %>% select(c(hard_ReachCar,hard_publicTransportation,
+                  hard_terrainDifficultyNonRainy,hard_terrainDifficultyRainy,
+                  hard_roadconditionNonRainyCar,hard_roadconditionRainyCar,
+                  hard_timeTabletPlaceRainy,hard_timeTabletPlaceNonRainy,
+                  hard_transportationEquipmentNonRainy,hard_transportationEquipmentRainy,
+                  hard_overall,hard_residentsMedical,composite_full,composite_trim)) %>% 
+  dplyr::summarise_all (list(function(x) {mean(x[which( x!=99 & x!="---")] %>% as.numeric(),na.rm=T)},
+                             function(x) {sd(x[which( x!=99 & x!="---")] %>% as.numeric(),na.rm=T)},
+                             function(x) {min(x[which( x!=99 & x!="---")] %>% as.numeric(),na.rm=T)},
+                             function(x) {max(x[which( x!=99 & x!="---")] %>% as.numeric() ,na.rm=T)},
+                             function(x) {
+                               length(which(x==min(x[which(  x!=99 & x!="---")],na.rm=T)) ) / length(x[which(!is.na(x[which(x!=6 & x!=99 & x!="---")]))])
+                               },
+                             function(x) {
+                               length(which(x==max(x[which( x!=99 & x!="---")],na.rm=T)) ) / length(x[which(!is.na(x[which(x!=6 & x!=99 & x!="---")]))])
+                               }) ) %>% t() %>% as.data.frame()
+
+descrTable = cbind.data.frame(descrTable[which( grepl("_fn1",row.names(descrTable) ) ),],
+                     descrTable[which( grepl("_fn2",row.names(descrTable) ) ),],
+                     descrTable[which( grepl("_fn3",row.names(descrTable) ) ),],
+                     descrTable[which( grepl("_fn4",row.names(descrTable) ) ),],
+                     descrTable[which( grepl("_fn5",row.names(descrTable) ) ),],
+                     descrTable[which( grepl("_fn6",row.names(descrTable) ) ),])
+
+names(descrTable) = c("Mean","SD","Min","Max","%AtMin","%AtMax")
+row.names(descrTable) = c("hard_ReachCar","hard_publicTransportation",
+                  "hard_terrainDifficultyNonRainy","hard_terrainDifficultyRainy",
+                  "hard_roadconditionNonRainyCar","hard_roadconditionRainyCar",
+                  "hard_timeTabletPlaceRainy","hard_timeTabletPlaceNonRainy",
+                  "hard_transportationEquipmentNonRainy","hard_transportationEquipmentRainy",
+                  "hard_overall","hard_residentsMedical","composite_full","composite_trim")
+
+descrTable
+
+
+
+
+
+```
+
+
+```{r, echo=F,include=F}
+comp_ICC = getICC("composite_full")
+
+comp_trim_ICC = getICC("composite_trim")
+
+overall_ICC = getICC("hard_overall")
+
+resMed_ICC = getICC("hard_residentsMedical")
+
+transpRainy_ICC = getICC("hard_transportationEquipmentNonRainy")
+
+transpNonRainy_ICC = getICC("hard_transportationEquipmentRainy")
+
+roadcondnonR_ICC = getICC("hard_roadconditionNonRainyCar")
+
+roadcondR_ICC = getICC("hard_roadconditionRainyCar")
+
+timeRainy_ICC = getICC("hard_timeTabletPlaceRainy")
+
+timeNonRainy_ICC = getICC("hard_timeTabletPlaceNonRainy")
+
+terrainDiffNonR_ICC = getICC("hard_terrainDifficultyNonRainy")
+
+terrainDiffR_ICC = getICC("hard_terrainDifficultyRainy")
+
+
+ICC_df = data.frame(
+  "Item" = c("Difficulty of the terrain on non-rainy season",
+             "Difficulty of the terrain on rainy season",
+             "Condition of the roads on rainy season",
+             "Condition of the roads in the non-rainy season",
+             "Estimate of travel time to the village on rainy season",
+             "Estimate of travel time to the village on non-rainy season",
+             "How difficult is it to transport equipment to the village in the rainy season?",
+             "How difficult is it to transport equipment to the village in the non-rainy season?",
+             "Overall estimate of hardness to reach",
+             "Estimate of village residents’ access to health care",
+             "Composite variable, full",
+             "Composite variable, trim"),
+  "N" = c(terrainDiffNonR_ICC$k,
+          terrainDiffR_ICC$k,
+          roadcondR_ICC$k,
+          roadcondnonR_ICC$k,
+          timeRainy_ICC$k,
+          timeNonRainy_ICC$k,
+          transpRainy_ICC$k,
+          transpNonRainy_ICC$k,
+          overall_ICC$k,
+          resMed_ICC$k,
+          comp_ICC$k,
+          comp_trim_ICC$k),
+  "Ind.ICC" = c(paste0(round(terrainDiffNonR_ICC$ICCs[1,1],3)," (",round(terrainDiffNonR_ICC$ICCs[1,2],3),", ",round(terrainDiffNonR_ICC$ICCs[1,3],3),")"),
+                paste0(round(terrainDiffR_ICC$ICCs[1,1],3)," (",round(terrainDiffR_ICC$ICCs[1,2],3),", ",round(terrainDiffR_ICC$ICCs[1,3],3),")"),
+                paste0(round(roadcondR_ICC$ICCs[1,1],3)," (",round(roadcondR_ICC$ICCs[1,2],3),", ",round(roadcondR_ICC$ICCs[1,3],3),")"),
+                paste0(round(roadcondnonR_ICC$ICCs[1,1],3)," (",round(roadcondnonR_ICC$ICCs[1,2],3),", ",round(roadcondnonR_ICC$ICCs[1,3],3),")"),
+                paste0(round(timeRainy_ICC$ICCs[1,1],3)," (",round(timeRainy_ICC$ICCs[1,2],3),", ",round(timeRainy_ICC$ICCs[1,3],3),")"),
+                paste0(round(timeNonRainy_ICC$ICCs[1,1],3)," (",round(timeNonRainy_ICC$ICCs[1,2],3),", ",round(timeNonRainy_ICC$ICCs[1,3],3),")"),
+                paste0(round(transpRainy_ICC$ICCs[1,1],3)," (",round(transpRainy_ICC$ICCs[1,2],3),", ",round(transpRainy_ICC$ICCs[1,3],3),")"),
+                paste0(round(transpNonRainy_ICC$ICCs[1,1],3)," (",round(transpNonRainy_ICC$ICCs[1,2],3),", ",round(transpNonRainy_ICC$ICCs[1,3],3),")"),
+                paste0(round(overall_ICC$ICCs[1,1],3)," (",round(overall_ICC$ICCs[1,2],3),", ",round(overall_ICC$ICCs[1,3],3),")"),
+                paste0(round(resMed_ICC$ICCs[1,1],3)," (",round(resMed_ICC$ICCs[1,2],3),", ",round(resMed_ICC$ICCs[1,3],3),")"),
+                paste0(round(comp_ICC$ICCs[1,1],3)," (",round(comp_ICC$ICCs[1,2],3),", ",round(comp_ICC$ICCs[1,3],3),")"),
+                paste0(round(comp_trim_ICC$ICCs[1,1],3)," (",round(comp_trim_ICC$ICCs[1,2],3),", ",round(comp_trim_ICC$ICCs[1,3],3),")")
+                ),
+  "Avg.ICC" = c(paste0(round(terrainDiffNonR_ICC$ICCs[6,1],3)," (",round(terrainDiffNonR_ICC$ICCs[6,2],3),", ",round(terrainDiffNonR_ICC$ICCs[6,3],3),")"),
+                paste0(round(terrainDiffR_ICC$ICCs[6,1],3)," (",round(terrainDiffR_ICC$ICCs[6,2],3),", ",round(terrainDiffR_ICC$ICCs[6,3],3),")"),
+                paste0(round(roadcondR_ICC$ICCs[6,1],3)," (",round(roadcondR_ICC$ICCs[6,2],3),", ",round(roadcondR_ICC$ICCs[6,3],3),")"),
+                paste0(round(roadcondnonR_ICC$ICCs[6,1],3)," (",round(roadcondnonR_ICC$ICCs[6,2],3),", ",round(roadcondnonR_ICC$ICCs[6,3],3),")"),
+                paste0(round(timeRainy_ICC$ICCs[6,1],3)," (",round(timeRainy_ICC$ICCs[6,2],3),", ",round(timeRainy_ICC$ICCs[6,3],3),")"),
+                paste0(round(timeNonRainy_ICC$ICCs[6,1],3)," (",round(timeNonRainy_ICC$ICCs[6,2],3),", ",round(timeNonRainy_ICC$ICCs[6,3],3),")"),
+                paste0(round(transpRainy_ICC$ICCs[6,1],3)," (",round(transpRainy_ICC$ICCs[6,2],3),", ",round(transpRainy_ICC$ICCs[6,3],3),")"),
+                paste0(round(transpNonRainy_ICC$ICCs[6,1],3)," (",round(transpNonRainy_ICC$ICCs[6,2],3),", ",round(transpNonRainy_ICC$ICCs[6,3],3),")"),
+                paste0(round(overall_ICC$ICCs[6,1],3)," (",round(overall_ICC$ICCs[6,2],3),", ",round(overall_ICC$ICCs[6,3],3),")"),
+                paste0(round(resMed_ICC$ICCs[6,1],3)," (",round(resMed_ICC$ICCs[6,2],3),", ",round(resMed_ICC$ICCs[6,3],3),")"),
+                paste0(round(comp_ICC$ICCs[6,1],3)," (",round(comp_ICC$ICCs[6,2],3),", ",round(comp_ICC$ICCs[6,3],3),")"),
+                paste0(round(comp_trim_ICC$ICCs[6,1],3)," (",round(comp_trim_ICC$ICCs[6,2],3),", ",round(comp_trim_ICC$ICCs[6,3],3),")")
+                )
+)
+
+```
+
+
+```{r, echo=F,include=F}
+
+# Feasibility 
+ 
+# For feasibility purposes, the time taken filling n villages will be divided by the number of villages answered by the judge
+## Disclaimer: Even if a village assessment was discarded from the analysis due to 
+## data entry issues, the time taken to fill the form will be taken into account in its entiriety
+
+
+time_taken <- c()
+for(i in sort(unique(data$`form.nVillages`))) 
+    time_taken = append(time_taken,mean(data[which(data$`form.nVillages`==i),"Time_taken"]*60*24) %>% round()/i)
+
+
+
+workload_df = aggregate(data[data$`form.nVillages`<10,
+                             c("workloadEstimate")],
+                        by=list(data[data$`form.nVillages`<10,]$username,
+                                data[data$`form.nVillages`<10,]$formid),FUN = function(x) { 
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+    }  )
+
+workload_df$estim = ifelse(workload_df[,3] ==1,"3. Survey felt laboursome",
+                           ifelse(workload_df[,3] ==2,"2. Workload was moderate",
+                                  ifelse(workload_df[,3] ==3,"1. Workload was light",NA)) )
+
+
+
+
+# Example data
+counts <- c(nrow(workload_df[which(workload_df[,3]==1),]),
+            nrow(workload_df[which(workload_df[,3]==2),]), 
+            nrow(workload_df[which(workload_df[,3]==3),]))
+categories <- c("3. Survey felt laboursome", "2. Workload was moderate", "1. Workload was light")
+
+# Calculate percentages
+percentages <- counts / sum(counts) * 100
+
+
+# Save numbers
+nAssessments = nrow(data)
+
+nAssessmentsPerRater = mean(aggregate(data$VillageID,by=list(data$username),FUN = function(x) length(unique(x)))[,2]) %>% round(3)
+
+nAssessmentsPerVillage = mean(aggregate(data$hard_overall,by=list(data$VillageID),FUN = function(x) length(unique(x)))[,2]) %>% round(0)
+
+nRatersPerVillage = mean(aggregate(data$hard_overall,by=list(data$VillageID),FUN = function(x) length(unique(x)))[,2]) %>% round(4)
+
+nVillages = data[,c("District","cscom","villageName")] %>% distinct() %>% nrow()
+nJudges = data$username %>% unique() %>% length()
+nVillagesWithManyAssessments = data[,c("District","cscom","villageName")] %>% dplyr::count(District,cscom,villageName) %>% dplyr::filter(n >1)  %>% nrow()
+
+minTime = min(time_taken)  ## to output
+maxTime = max(time_taken)  ## to output
+meanTime = mean(time_taken)  ## to output
+
+
+# 2. Internal consistency
+## Correlation plot
+
+
+
+scaleItems = c("hard_overall","hard_residentsMedical",
+               "hard_roadconditionNonRainyCar","hard_roadconditionRainyCar",
+               "hard_timeTabletPlaceNonRainy","hard_timeTabletPlaceRainy",
+               "hard_transportationEquipmentNonRainy","hard_transportationEquipmentRainy",
+               "hard_terrainDifficultyNonRainy","hard_terrainDifficultyRainy")
+
+
+polyChorData = na.omit(data[which(
+  rowSums(data[,scaleItems[1:8]]==6,na.rm=T)==0
+  ),scaleItems[1:8]])
+
+for(i in 1:ncol(polyChorData)) {
+  polyChorData[,i] = ifelse(polyChorData[,i]=="---" | 
+                              polyChorData[,i]=="99",NA,polyChorData[,i]) %>% as.numeric()
+}
+
+polyChorData = na.omit(polyChorData)
+
+polyMatrix = polychoric(polyChorData)$rho
+
+
+mapDF = cbind.data.frame(scaleItems,c(
+  "How hard this village \nis to reach?",
+  "How difficult it is for the residents \nto seek medical care?",
+  "Condition of the roads in non-rainy season",
+  "Condition of the roads in rainy season",
+  "How long does it take for you to \nget to this village on non-rainy season?",
+  "How long does it take for you to \nget to this village on rainy season?",
+  "How difficult it is to transport equipment \nto this village on non-rainy season?",
+  "How difficult it is to transport equipment \nto this village on rainy season?",
+  "How difficult is the terrain \nduring non-rainy season?",
+  "How difficult is the terrain \nduring rainy season?"),
+  c("How hard this village \nis to reach?",
+    "How difficult it is for the residents \nto seek medical care?",
+    "Condition of the roads in non-rainy season",
+    "Condition of the roads in rainy season",
+    "How long does it take for you to \nget to this village on non-rainy season?",
+    "How long does it take for you to \nget to this village on rainy season?",
+    "How difficult it is to transport equipment \nto this village on non-rainy season?",
+    "How difficult it is to transport equipment \nto this village on rainy season?",
+    "How difficult is the terrain \nduring non-rainy season?",
+    "How difficult is the terrain \nduring rainy season?"))
+names(mapDF) = c("Variable name","question","number")
+
+for(i in scaleItems){
+  data[,i] = as.numeric(ifelse(data[,i]=="---",NA,data[,i]) ) #+ rnorm(as.numeric(data[,i]),0,0.1)
+  data[,i] = ifelse(data[,i]==99,6,data[,i])
+  
+}
+
+corDF = data.frame("x.item"=NA,"y.item"=NA,"correlation" =NA,
+                   "polyCor"=NA)
+## Make correlation matrix 
+for(x in scaleItems[1:8] ) {
+  for(y in scaleItems[1:8]) {
+    tempDF = data.frame("x.item"=x,"y.item"=y,"correlation"=cor(data[,x],
+                                                                data[,y],
+                                                                use="complete.obs",
+                                                                method = "pearson"),
+                        "polyCor"= polyMatrix[which(
+                          row.names(polyMatrix)==x),y] )
+    
+    
+    
+    corDF = rbind.data.frame(corDF,tempDF)
+  }
+  
+}
+
+corDF = na.omit(corDF)
+
+corDF = merge(corDF,mapDF[,c(1,3)],by.x="x.item",by.y = "Variable name",all.x=T)
+names(corDF) = c("x.item","y.item","correlation","polyCor","x.descr")
+corDF = merge(corDF,mapDF[,c(1,2)],by.x="y.item",by.y = "Variable name",all.x=T)
+names(corDF) = c("y.item","x.item","correlation","polyCor","x.descr","y.descr")
+
+corDF <- corDF %>%
+  mutate(y.item_index = as.numeric(factor(y.descr)),
+         x.item_index = as.numeric(factor(x.descr))) 
+
+corDF = corDF[order(corDF$y.item_index,corDF$x.item_index),]
+
+#corDF$correlation = ifelse(corDF$y.item_index<corDF$x.item_index,NA,corDF$correlation) 
+corDF$polyCor = ifelse(corDF$y.item_index<corDF$x.item_index,NA,corDF$polyCor)
+   
+
+
+corplot = ggplot(corDF, aes(x = `x.descr`, y = `y.descr`, fill = polyCor)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = ifelse(is.na(polyCor), " ",formatC(round(polyCor, 2) , format = "f", digits = 2 ) ) ), color = "black", size = 6) +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name="Polychoric Correlation",na.value="white") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 15, hjust = 1,face = "bold"),
+        axis.text.y = element_text(angle = 0, vjust = 1, 
+                                   size = c(15,15,15,15,15,15,15,15,15), 
+                                   hjust = 1,face = "bold",
+                                   color=c(1,1,1,1,1,1,1,1))) + 
+  xlab("") + ylab("") + ggtitle("Polychoric correlation matrix \nof the survey items",
+                                subtitle = "Villages that can be reached by a vehicle") +
+  theme(plot.title = element_text(size = 20, face = "bold")) +
+  theme(plot.subtitle = element_text(size = 20)) +
+  coord_fixed() 
+
+
+
+histogram = ggplot(corDF[which(corDF$polyCor<.99999),], aes(x = polyCor )) +
+  geom_histogram(aes(fill=..x..)) + theme_classic() +
+  scale_fill_gradient(low = "purple", high = "blue") + 
+  geom_density(color = "blue", size = 1) +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name="Correlation",na.value="white") + ylab("")+
+  theme(legend.position = "none") + xlab("Polychoric correlation")
+
+
+hist_grob = ggplotGrob(histogram)
+
+
+scaleItems = c("hard_overall","hard_residentsMedical",
+               "hard_terrainDifficultyNonRainy","hard_terrainDifficultyRainy",
+               "hard_timeTabletPlaceNonRainy","hard_timeTabletPlaceRainy",
+               "hard_transportationEquipmentNonRainy","hard_transportationEquipmentRainy")
+
+
+polyChorData = na.omit(data[which(
+  rowSums(data[,scaleItems[1:8]]==6,na.rm=T)==0
+  ),scaleItems[1:8]])
+
+for(i in 1:ncol(polyChorData)) {
+  polyChorData[,i] = ifelse(polyChorData[,i]=="---" | 
+                              polyChorData[,i]=="99",NA,polyChorData[,i]) %>% as.numeric()
+}
+
+polyChorData = na.omit(polyChorData)
+
+polyMatrix = polychoric(polyChorData,correct=F)$rho
+
+
+mapDF = cbind.data.frame(scaleItems,c(
+  "How hard this village \nis to reach?",
+  "How difficult it is for the residents \nto seek medical care?",
+  "How difficult is the terrain \nduring non-rainy season?",
+  "How difficult is the terrain \nduring rainy season?",
+  "How long does it take for you to \nget to this village on non-rainy season?",
+  "How long does it take for you to \nget to this village on rainy season?",
+  "How difficult it is to transport equipment \nto this village on non-rainy season?",
+  "How difficult it is to transport equipment \nto this village on rainy season?"),
+  c("How hard this village \nis to reach?",
+    "How difficult it is for the residents \nto seek medical care?",
+    "How difficult is the terrain \nduring non-rainy season?",
+    "How difficult is the terrain \nduring rainy season?",
+    "How long does it take for you to \nget to this village on non-rainy season?",
+    "How long does it take for you to \nget to this village on rainy season?",
+    "How difficult it is to transport equipment \nto this village on non-rainy season?",
+    "How difficult it is to transport equipment \nto this village on rainy season?"))
+names(mapDF) = c("Variable name","question","number")
+
+for(i in scaleItems){
+  data[,i] = as.numeric(ifelse(data[,i]=="---",NA,data[,i]) ) #+ rnorm(as.numeric(data[,i]),0,0.1)
+  data[,i] = ifelse(data[,i]==99,6,data[,i])
+  
+}
+
+corDF = data.frame("x.item"=NA,"y.item"=NA,"correlation" =NA,
+                   "polyCor"=NA)
+## Make correlation matrix 
+for(x in scaleItems[1:8] ) {
+  for(y in scaleItems[1:8]) {
+    tempDF = data.frame("x.item"=x,"y.item"=y,"correlation"=cor(data[,x],
+                                                                data[,y],
+                                                                use="complete.obs",
+                                                                method = "pearson"),
+                        "polyCor"= polyMatrix[which(
+                          row.names(polyMatrix)==x),y] )
+    
+    
+    
+    corDF = rbind.data.frame(corDF,tempDF)
+  }
+  
+}
+
+corDF = na.omit(corDF)
+
+corDF = merge(corDF,mapDF[,c(1,3)],by.x="x.item",by.y = "Variable name",all.x=T)
+names(corDF) = c("x.item","y.item","correlation","polyCor","x.descr")
+corDF = merge(corDF,mapDF[,c(1,2)],by.x="y.item",by.y = "Variable name",all.x=T)
+names(corDF) = c("y.item","x.item","correlation","polyCor","x.descr","y.descr")
+
+corDF <- corDF %>%
+  mutate(y.item_index = as.numeric(factor(y.descr)),
+         x.item_index = as.numeric(factor(x.descr))) 
+
+corDF = corDF[order(corDF$y.item_index,corDF$x.item_index),]
+
+#corDF$correlation = ifelse(corDF$y.item_index<corDF$x.item_index,NA,corDF$correlation) 
+corDF$polyCor = ifelse(corDF$y.item_index<corDF$x.item_index,NA,corDF$polyCor)
+   
+
+
+corplot2 = ggplot(corDF, aes(x = `x.descr`, y = `y.descr`, fill = polyCor)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = ifelse(is.na(polyCor), " ",formatC(round(polyCor, 2) , format = "f", digits = 2 ) ) ), color = "black", size = 6) +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name="Polychoric Correlation",na.value="white") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 15, hjust = 1,face = "bold"),
+        axis.text.y = element_text(angle = 0, vjust = 1, 
+                                   size = c(15,15,15,15,15,15,15,15,15), 
+                                   hjust = 1,face = "bold",
+                                   color=c(1,1,1,1,1,1,1,1))) + 
+  xlab("") + ylab("") + ggtitle("Polychoric correlation matrix \nof the survey items",
+                                subtitle = "Villages that can't be reached by a vehicle") +
+  theme(plot.title = element_text(size = 20, face = "bold")) +
+  theme(plot.subtitle = element_text(size = 20)) +
+  coord_fixed() 
+
+
+
+histogram2 = ggplot(corDF[which(corDF$polyCor<.99999),], aes(x = polyCor )) +
+  geom_histogram(aes(fill=..x..)) + theme_classic() +
+  scale_fill_gradient(low = "purple", high = "blue") + 
+  geom_density(color = "blue", size = 1) +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name="Correlation",na.value="white") + ylab("")+
+  theme(legend.position = "none") + xlab("Polychoric correlation")
+
+
+hist_grob2 = ggplotGrob(histogram2)
+
+
+
+
+
+
+
+
+strAV_mod = glmer(as.factor(strategieAvance) ~ scale(composite_full) + (1|username),data = data, family = "binomial") %>% summary()
+
+strAV_mod_2 = glmer(as.factor(strategieAvance) ~ scale(composite_trim) + (1|username),data = data, family = "binomial") %>% summary()
+
+dist_mod = lmer(scale(distanceKM) ~ scale(composite_full) + (1|username),data = data) %>% summary() ## to output
+
+dist_mod_2 = lmer(scale(distanceKM) ~ scale(composite_trim) + (1|username),data = data) %>% summary() ## to output
+
+rain_mod = lmer(scale(rain) ~ scale(composite_full) + (1|username),data = data) %>% summary()
+
+rain_mod_2 = lmer(scale(rain) ~ scale(composite_trim) + (1|username),data = data) %>% summary()
+
+travel_mod = lmer(scale(travel_time_car_minutes) ~ scale(composite_full) + (1|username),data = data) %>% summary()
+
+travel_mod_2 = lmer(scale(travel_time_car_minutes) ~ scale(composite_trim) + (1|username),data = data) %>% summary()
+
+
+
+```
+
+# Results
+
+
+
+
+## Descriptives 
+
+```{r, echo=F}
+
+kableExtra::kable(descrTable)
+
+```
+
+
+
+
+## Mortality 
+
+```{r, echo=F}
+
+kableExtra::kable(mortality_res_df)
+
+```
+
+
+
+
+## Feasibility
+
+Number of village assessments: `r nAssessments` 
+
+Number of villages: `r nVillages` 
+
+Number of villages with more than one assessments: `r nVillagesWithManyAssessments` 
+
+Number of judges: `r nJudges`
+
+Minimum time: `r minTime`
+
+Maximum time: `r maxTime`
+
+Average time: `r meanTime`
+
+
+
+
+
+
+### Assessment of workload (Assessed fewer than 10 villages in a round):
+
+```{r, echo=F,  fig.width = 6, fig.asp = 1, fig.cap="\\label{fig:figs}Supplementary Figure 3" }
+
+# Create barplot
+barplot(counts, names.arg = categories, ylim = c(0, max(counts) * 1.2), col = "skyblue")
+
+# Add percentage labels
+text(x = 1:length(counts), y = counts, label = paste0(round(percentages, 1), "%"), pos = 3, cex = 1.8, col = "blue")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r, echo=F,include=F}
+time_taken <- c()
+for(i in sort(unique(data$`form.nVillages`))) 
+    time_taken = append(time_taken,mean(data[which(data$`form.nVillages`==i),"Time_taken"]*60*24) %>% round()/i)
+
+
+
+workload_df = aggregate(data[data$`form.nVillages`>=10,
+                             c("workloadEstimate")],
+                        by=list(data[data$`form.nVillages`>=10,]$username,
+                                data[data$`form.nVillages`>=10,]$formid),FUN = function(x) { 
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+    }  )
+
+workload_df$estim = ifelse(workload_df[,3] ==1,"3. Survey felt laboursome",
+                           ifelse(workload_df[,3] ==2,"2. Workload was moderate",
+                                  ifelse(workload_df[,3] ==3,"1. Workload was light",NA)) )
+
+
+
+
+# Example data
+counts <- c(nrow(workload_df[which(workload_df[,3]==1),]),
+            nrow(workload_df[which(workload_df[,3]==2),]), 
+            nrow(workload_df[which(workload_df[,3]==3),]))
+categories <- c("3. Survey felt laboursome", "2. Workload was moderate", "1. Workload was light")
+
+# Calculate percentages
+percentages <- counts / sum(counts) * 100
+
+
+```
+
+
+
+
+
+### Assessment of workload (Assessed 10 villages or more in a round):
+```{r, echo=F,  fig.width = 6, fig.asp = 1, fig.cap="\\label{fig:figs}Supplementary Figure 3" }
+
+# Create barplot
+barplot(counts, names.arg = categories, ylim = c(0, max(counts) * 1.2), col = "skyblue")
+
+# Add percentage labels
+text(x = 1:length(counts), y = counts, label = paste0(round(percentages, 1), "%"), pos = 3, cex = 1.8, col = "blue")
+
+```
+
+
+## Inter-rater reliability and internal consistency
+
+### Polychoric correlation matrix:
+```{r,fig.width=11,fig.height=12, echo=F, fig.cap="\\label{fig:figs}Figure 2"   }
+# Overlay the histogram onto the heatmap
+p1 <- corplot +
+  annotation_custom(grob = hist_grob, xmin = 4.5, xmax = 8.5, ymin = 0.5, ymax = 4.5)
+
+p2 <- corplot2 +
+  annotation_custom(grob = hist_grob2, xmin = 4.5, xmax = 8.5, ymin = 0.5, ymax = 4.5)
+
+p1
+#gridExtra::grid.arrange(p1, p2, nrow = 2)
+
+```
+
+
+```{r,fig.width=11,fig.height=12, echo=F, fig.cap="\\label{fig:figs}Figure 2"   }
+# Overlay the histogram onto the heatmap
+p2
+#gridExtra::grid.arrange(p1, p2, nrow = 2)
+
+```
+
+
+
+## Convergent validity
+
+### Strategie Avance:
+```{r,echo=FALSE, fig.dim = c(8, 9.5), fig.align = 'right'}
+
+par(mfrow=c(3,2))
+
+
+
+boxplot(data$composite_full~data$strategieAvance,xlab = "Strategié Avancé",
+        ylab="Hard-to-reach composite variable, all items")
+
+boxplot(data$composite_trim~data$strategieAvance,xlab = "Strategié Avancé",
+        ylab="Hard-to-reach composite variable, two items")
+
+
+library(ggplot2)
+library(dplyr)
+library(viridis)
+
+ggplot(data=
+         data[which(!is.na(data$strategieAvance)),], aes(x=strategieAvance, y=composite_full)) +
+    geom_violin(width=1.0) +
+    geom_boxplot(width=0.1, color="black", alpha=0.2) +
+    scale_fill_viridis(discrete = TRUE) +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("") + ylab("Hard-to-reach composite score, all items") +
+    xlab("") + theme_classic()
+
+ggplot(data=
+         data[which(!is.na(data$strategieAvance)),], aes(x=strategieAvance, y=composite_trim)) +
+    geom_violin(width=1.0) +
+    geom_boxplot(width=0.1, color="black", alpha=0.2) +
+    scale_fill_viridis(discrete = TRUE) +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("") + ylab("Hard-to-reach composite score, two items") +
+    xlab("") + theme_classic()
+
+```
+
+## Convergent validity
+
+### As-crow-flies:
+```{r, echo=F,  fig.width = 6, fig.asp = 1, , fig.cap="\\label{fig:figs}Figure 3"   }
+plot(data$distanceKM,data$composite_full,xlab="Distance",ylab="Composite variable",
+     main="As-crow-flies distance vs Composite variable")
+abline(lm(data$composite_full~data$distanceKM))
+text(25,18,
+     paste0(round(as.data.frame(dist_mod$coefficients)[2,1],2),"\n (",
+            round(as.data.frame(dist_mod$coefficients)[2,1]-1.96*as.data.frame(dist_mod$coefficients)[2,2],2)," to ",
+            round(as.data.frame(dist_mod$coefficients)[2,1]+1.96*as.data.frame(dist_mod$coefficients)[2,2],2),")"),cex=1.5)  
+
+```
+
+
+
+### Average monthly rainfall:
+```{r, echo=F,  fig.width = 6, fig.asp = 1, , fig.cap="\\label{fig:figs}Figure 3"   }
+plot(data$rain,data$composite_full,xlab="Average monthly rainfall",ylab="Composite variable",
+     main="Average monthly rainfall vs Composite variable")
+abline(lm(data$composite_full~data$rain))
+text(100,18,
+     paste0(round(as.data.frame(rain_mod$coefficients)[2,1],2),"\n (",
+            round(as.data.frame(rain_mod$coefficients)[2,1]-1.96*as.data.frame(rain_mod$coefficients)[2,2],2)," to ",
+            round(as.data.frame(rain_mod$coefficients)[2,1]+1.96*as.data.frame(rain_mod$coefficients)[2,2],2),")"),cex=1.5)  
+
+```
+
+
+### Travel time:
+```{r, echo=F,  fig.width = 6, fig.asp = 1, , fig.cap="\\label{fig:figs}Figure 3"   }
+plot(data$travel_time_car_minutes,data$composite_full,xlab="Travel time by car",ylab="Composite variable",
+     main="Travel time by car vs Composite variable")
+abline(lm(data$composite_full~data$travel_time_car_minutes))
+text(100,18,
+     paste0(round(as.data.frame(travel_mod$coefficients)[2,1],2),"\n (",
+            round(as.data.frame(travel_mod$coefficients)[2,1]-1.96*as.data.frame(travel_mod$coefficients)[2,2],2)," to ",
+            round(as.data.frame(travel_mod$coefficients)[2,1]+1.96*as.data.frame(travel_mod$coefficients)[2,2],2),")"),cex=1.5)  
+
+```
+
+
+## Inter-rater reliability
+
+### ICC table
+
+```{r, echo=F}
+
+kableExtra::kable(ICC_df)
+
+```
+
+
+
+
