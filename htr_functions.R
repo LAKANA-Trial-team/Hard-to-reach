@@ -2,6 +2,12 @@
 
 #### Hard-to-reach functions
 
+### Methods applied for ICC calculations from the work of:
+
+##  ten Hove, Debby, Terrence D. Jorgensen, and L. A. van der Ark. 2025. 
+## “Updated Guidelines on Selecting an ICC for IRR.” OSF. June 21. doi:10.17605/OSF.IO/8J26U. 
+
+
 v=function(dat){min(dat,na.rm = T)==max(dat,na.rm = T)}
 
 makeHelpMatrix = function(survey_data,fullData,variableofinterest){
@@ -390,3 +396,4 @@ getICC <- function(icc_var) {
   
   
 }
+
